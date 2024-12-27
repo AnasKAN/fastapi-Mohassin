@@ -117,7 +117,7 @@ def process_job(job):
                 "decision_variables": solution["group_schedules"],
                 "visualization": visualization,
             }
-        elif ==2: #bottleneck sequential process
+        #elif ==2: #bottleneck sequential process
         #make app.py endpoint startprocess
         #comes from the user. worker for every request
         #don't hardcode adding solvers.
