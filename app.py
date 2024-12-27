@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import Dict
 import uuid
 import pymysql
+from typing import Optional
 from datetime import datetime, timedelta
 import json
 
@@ -27,9 +28,9 @@ def get_db_connection():
     )
 
 class JobRequest(BaseModel):
-    optimizer_id: int
+    optimizer_id: Optional[int] = None
+    optimizer_name: Optional[str] = None
     data: Dict
-
 #validate api key
 async def validate_api_key(api_key: str):
     connection = get_db_connection()
@@ -108,49 +109,49 @@ def generate_key(user_id: int = 0):
 #     print(f"Job submitted successfully: {job_id}")  # Debug log
 #     return {"job_id": job_id}
 
+
+
 @app.post("/submit-job")
 def submit_job(job_request: JobRequest, api_key: str = Depends(validate_api_key)):
-    """Submit a job with the given API key."""
+    print(f"Received job submission: {job_request}")  # Debug log
+    print(f"API key: {api_key}")  # Debug log
+
+    if not job_request.optimizer_id and not job_request.optimizer_name:
+        raise HTTPException(status_code=400, detail="Either optimizer_id or optimizer_name must be provided.")
+
     connection = get_db_connection()
-    solver_id = None
-
-    # Determine the solver_id from either `optimizer_id` or `optimizer_name`
-    if "optimizer_id" in job_request.dict():
-        solver_id = job_request.optimizer_id
-    elif "optimizer_name" in job_request.dict():
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    "SELECT solver_id FROM Solvers WHERE solver_name = %s",
-                    (job_request.optimizer_name,),
-                )
-                result = cursor.fetchone()
-                if result:
-                    solver_id = result["solver_id"]
-                else:
-                    raise HTTPException(status_code=404, detail="Optimizer not found.")
-        except Exception as e:
-            raise HTTPException(status_code=500, detail="Database error")
-    else:
-        raise HTTPException(status_code=400, detail="Must provide optimizer_id or optimizer_name.")
-
-    # Insert job into the database
     try:
         with connection.cursor() as cursor:
-            cursor.execute(
-                """
+            # Determine solver_id from optimizer_name if needed
+            solver_id = job_request.optimizer_id
+            if job_request.optimizer_name:
+                cursor.execute(
+                    "SELECT solver_id FROM Solvers WHERE solver_name = %s",
+                    (job_request.optimizer_name,)
+                )
+                solver = cursor.fetchone()
+                if not solver:
+                    raise HTTPException(status_code=404, detail="Optimizer name not found.")
+                solver_id = solver["solver_id"]
+
+            query = """
                 INSERT INTO Job (user_id, solver_id, input_data, status, created_at)
                 VALUES (%s, %s, %s, %s, NOW())
-                """,
-                (0, solver_id, json.dumps(job_request.data), "processing"),
+            """
+            print(f"Executing query: {query}")  # Debug log
+            cursor.execute(
+                query,
+                (0, solver_id, json.dumps(job_request.data), "processing")
             )
-            job_id = cursor.lastrowid
+            job_id = cursor.lastrowid  # Use the database's auto-generated ID
             connection.commit()
     except Exception as e:
+        print(f"Database error: {e}")  # Debug log
         raise HTTPException(status_code=500, detail="Database error")
     finally:
         connection.close()
 
+    print(f"Job submitted successfully: {job_id}")  # Debug log
     return {"job_id": job_id}
 
 
@@ -158,12 +159,37 @@ def submit_job(job_request: JobRequest, api_key: str = Depends(validate_api_key)
 def get_job_result(job_id: str, api_key: str = Depends(validate_api_key)):
     """Fetch the result of a job."""
     connection = get_db_connection()
+    print(f"Fetching job result for job_id={job_id}")  # Debug log
     try:
         with connection.cursor() as cursor:
             cursor.execute("SELECT * FROM Job WHERE job_id = %s", (job_id,))
             job = cursor.fetchone()
+            print(f"Job fetched: {job}")  # Debug log
             if not job:
                 raise HTTPException(status_code=404, detail="Job not found")
+
+            # Update job status and time_to_solve if processing
+            if job["status"] == "processing":
+                result_data = {"status": "success", "solution": "Optimal solution for the given data"}
+                time_to_solve = 10  # Mock processing time for now
+
+                # Update the database with the results
+                cursor.execute(
+                    """
+                    UPDATE Job
+                    SET status = %s, result_data = %s, 
+                        time_to_solve = TIMESTAMPDIFF(SECOND, created_at, NOW()),
+                        updated_at = NOW()
+                    WHERE job_id = %s
+                    """,
+                    ("finished", json.dumps(result_data), job_id)
+                )
+                connection.commit()
+
+                # Update the job object to include the changes
+                job["status"] = "finished"
+                job["result_data"] = result_data
+                job["time_to_solve"] = time_to_solve
 
             return {
                 "job_id": job["job_id"],
@@ -172,9 +198,9 @@ def get_job_result(job_id: str, api_key: str = Depends(validate_api_key)):
                 "input_data": job["input_data"],
                 "result_data": job["result_data"],
                 "status": job["status"],
-                "time_to_solve": job["time_to_solve"],  # Include time_to_solve
+                "time_to_solve": job["time_to_solve"],
                 "created_at": job["created_at"],
-                "updated_at": job["updated_at"],
+                "updated_at": job["updated_at"]
             }
     finally:
         connection.close()
