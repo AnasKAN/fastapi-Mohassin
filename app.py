@@ -146,6 +146,9 @@ def submit_job(job_request: JobRequest, api_key: str = Depends(validate_api_key)
             )
             job_id = cursor.lastrowid  # Use the database's auto-generated ID
             connection.commit()
+            # **Spawn the worker to process the job**
+            subprocess.run(["python3", "hub.py", str(job_id)], check=True)
+
     except Exception as e:
         print(f"Database error: {e}")  # Debug log
         raise HTTPException(status_code=500, detail="Database error")
