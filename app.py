@@ -110,65 +110,74 @@ def generate_key(user_id: int = 0):
 
 @app.post("/submit-job")
 def submit_job(job_request: JobRequest, api_key: str = Depends(validate_api_key)):
-    print(f"Received job submission: {job_request}")  # Debug log
-    print(f"API key: {api_key}")  # Debug log
+    """Submit a job with the given API key."""
     connection = get_db_connection()
+    solver_id = None
+
+    # Determine the solver_id from either `optimizer_id` or `optimizer_name`
+    if "optimizer_id" in job_request.dict():
+        solver_id = job_request.optimizer_id
+    elif "optimizer_name" in job_request.dict():
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT solver_id FROM Solvers WHERE solver_name = %s",
+                    (job_request.optimizer_name,),
+                )
+                result = cursor.fetchone()
+                if result:
+                    solver_id = result["solver_id"]
+                else:
+                    raise HTTPException(status_code=404, detail="Optimizer not found.")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail="Database error")
+    else:
+        raise HTTPException(status_code=400, detail="Must provide optimizer_id or optimizer_name.")
+
+    # Insert job into the database
     try:
         with connection.cursor() as cursor:
-            query = """
+            cursor.execute(
+                """
                 INSERT INTO Job (user_id, solver_id, input_data, status, created_at)
                 VALUES (%s, %s, %s, %s, NOW())
-            """
-            print(f"Executing query: {query}")  # Debug log
-            cursor.execute(
-                query,
-                (0, job_request.optimizer_id, json.dumps(job_request.data), "processing"),
+                """,
+                (0, solver_id, json.dumps(job_request.data), "processing"),
             )
-            job_id = cursor.lastrowid  # Use the database's auto-generated ID
+            job_id = cursor.lastrowid
             connection.commit()
     except Exception as e:
-        print(f"Database error: {e}")  # Debug log
         raise HTTPException(status_code=500, detail="Database error")
     finally:
         connection.close()
 
-    print(f"Job submitted successfully: {job_id}")  # Debug log
     return {"job_id": job_id}
-
 
 
 @app.get("/job-result/{job_id}")
 def get_job_result(job_id: str, api_key: str = Depends(validate_api_key)):
     """Fetch the result of a job."""
     connection = get_db_connection()
-    print(f"Fetching job result for job_id={job_id}")  # Debug log
     try:
         with connection.cursor() as cursor:
             cursor.execute("SELECT * FROM Job WHERE job_id = %s", (job_id,))
             job = cursor.fetchone()
-            print(f"Job fetched: {job}")  # Debug log
             if not job:
                 raise HTTPException(status_code=404, detail="Job not found")
 
-            # For now, mock result if the job is still "processing"
-            if job["status"] == "processing":
-                job["status"] = "completed"
-                job["result_data"] = {"solution": "Optimal solution for the given data"}
-                # Update the job in the database
-                cursor.execute(
-                    """
-                    UPDATE Job
-                    SET status = %s, result_data = %s, updated_at = NOW()
-                    WHERE job_id = %s
-                    """,
-                    ("completed", job["result_data"], job_id),
-                )
-                connection.commit()
-
-            return job
+            return {
+                "job_id": job["job_id"],
+                "user_id": job["user_id"],
+                "solver_id": job["solver_id"],
+                "input_data": job["input_data"],
+                "result_data": job["result_data"],
+                "status": job["status"],
+                "time_to_solve": job["time_to_solve"],  # Include time_to_solve
+                "created_at": job["created_at"],
+                "updated_at": job["updated_at"],
+            }
     finally:
         connection.close()
-
 
 
 @app.get("/optimizers")
