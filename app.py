@@ -6,6 +6,7 @@ import pymysql
 from typing import Optional
 from datetime import datetime, timedelta
 import json
+import subprocess
 
 app = FastAPI()
 
@@ -152,7 +153,18 @@ def submit_job(job_request: JobRequest, api_key: str = Depends(validate_api_key)
         connection.close()
 
     print(f"Job submitted successfully: {job_id}")  # Debug log
+
+    # Start `hub.py` as a subprocess to process this job
+    try:
+        subprocess.Popen(["python", "hub.py", str(job_id)], start_new_session=True)
+        print(f"Started worker process for job ID {job_id}")
+    except Exception as e:
+        print(f"Error starting worker process for job ID {job_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to start worker process.")
+
     return {"job_id": job_id}
+
+
 
 
 @app.get("/job-result/{job_id}")
