@@ -2,6 +2,7 @@
 import time
 import json
 import os
+import sys
 from optimizers.hajj_tafweej_scheduling_optimizer import Tafweej_Scheduling_Optimizer
 import pymysql
 from datetime import datetime
