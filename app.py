@@ -168,29 +168,7 @@ def get_job_result(job_id: str, api_key: str = Depends(validate_api_key)):
             if not job:
                 raise HTTPException(status_code=404, detail="Job not found")
 
-            # Update job status and time_to_solve if processing
-            if job["status"] == "processing":
-                result_data = {"status": "success", "solution": "Optimal solution for the given data"}
-                time_to_solve = 10  # Mock processing time for now
-
-                # Update the database with the results
-                cursor.execute(
-                    """
-                    UPDATE Job
-                    SET status = %s, result_data = %s, 
-                        time_to_solve = TIMESTAMPDIFF(SECOND, created_at, NOW()),
-                        updated_at = NOW()
-                    WHERE job_id = %s
-                    """,
-                    ("finished", json.dumps(result_data), job_id)
-                )
-                connection.commit()
-
-                # Update the job object to include the changes
-                job["status"] = "finished"
-                job["result_data"] = result_data
-                job["time_to_solve"] = time_to_solve
-
+            # Return the job details as is
             return {
                 "job_id": job["job_id"],
                 "user_id": job["user_id"],
@@ -204,6 +182,7 @@ def get_job_result(job_id: str, api_key: str = Depends(validate_api_key)):
             }
     finally:
         connection.close()
+
 
 
 @app.get("/optimizers")
