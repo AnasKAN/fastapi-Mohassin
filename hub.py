@@ -1,11 +1,11 @@
 
 import time
-import json
 import os
 import sys
-from optimizers.hajj_tafweej_scheduling_optimizer import Tafweej_Scheduling_Optimizer
 import pymysql
 from datetime import datetime
+import importlib
+import json
 
 # Database connection configuration
 DB_CONFIG = {
@@ -115,36 +115,57 @@ def update_job_status(job_id, status, result_data=None, time_to_solve=None):
 def process_job(job):
     """Process a single job using the appropriate optimizer."""
     try:
+        #parsing input data
         input_data = json.loads(job["input_data"])
-        api_key = input_data.get("api_key")
         data = input_data.get("data")
-        optimizer_name = input_data.get("optimizer_name")
-
+        solver_id = job.get("solver_id")
+        result = None
         if not data:
             print(f"Job {job['job_id']} has no data to process.")
             return {"status": "error", "message": "No data provided for processing."}
 
-        # Determine solver_id
-        solver_id = job.get("solver_id")
-        if not solver_id and optimizer_name:
-            solver_id = get_solver_id(optimizer_name)
-            if not solver_id:
-                return {"status": "error", "message": f"Optimizer '{optimizer_name}' not found."}
+        #fetching the optimizer details from the database
+        connection = connect_to_database()
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT module_name, class_name FROM Solvers WHERE solver_id = %s",
+                    (solver_id,),
+                )
+                solver = cursor.fetchone()
+                if not solver:
+                    return {"status": "error", "message": f"Solver with ID {solver_id} not found."}
 
-        print(f"Processing job {job['job_id']} with solver ID {solver_id}.")
-        if solver_id == 1:  # Tafweej Scheduling Optimizer
-            optimizer = Tafweej_Scheduling_Optimizer()
-            result = optimizer.scheduling_model_corrected(data)
+                module_name = solver["module_name"]
+                class_name = solver["class_name"]
+
+        finally:
+            connection.close()
+
+        #dynamically import using importlib! and initialize the optimizer
+        try:
+            optimizer_module = importlib.import_module(module_name)
+            optimizer_class = getattr(optimizer_module, class_name)
+            optimizer = optimizer_class()
+        except (ImportError, AttributeError) as e:
+            return {"status": "error", "message": f"Error loading optimizer: {e}"}
+
+        try:
+            print('data looks like: ',data)
+            print(f"Processing job {job['job_id']} with {class_name} from {module_name}.")
+            result = optimizer.optimize(data)  # EVERY RESEARCHER SHOULD HAVE A FUNCTION CALLED OPTIMIZE INSIDE THE CLASS TO OPTIMIZE PASSED DATA
+            # print('result looks like: ',type(result))
+
+            # general approach to convert the result to serializable json 
+            result = {"result": str(result)} 
+
 
             return {
                 "status": "success",
                 "result": result
             }
-
-        else:
-            print(f"Solver ID {solver_id} is not recognized.")
-            return {"status": "error", "message": "Solver not recognized."}
-
+        except Exception as e:
+            return {"status": "error", "message": f"Error when solving the instance: {e}"}
     except Exception as e:
         print(f"Error processing job {job['job_id']}: {e}")
         return {"status": "error", "message": str(e)}
