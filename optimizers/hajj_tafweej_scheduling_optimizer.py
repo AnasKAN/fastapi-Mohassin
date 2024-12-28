@@ -12,7 +12,7 @@ import pickle
 class Tafweej_Scheduling_Optimizer:
     #Model
     @staticmethod
-    def scheduling_model_corrected(input_data: Tuple[List[int],
+    def optimize(input_data: Tuple[List[int],
                                     List[List[int]],
                                     int,
                                     List[List[int]],
