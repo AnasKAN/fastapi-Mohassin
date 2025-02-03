@@ -6,12 +6,13 @@ import pymysql
 from datetime import datetime
 import importlib
 import json
+import gurobipy
 
 # Database connection configuration
 DB_CONFIG = {
-    "host": os.getenv("DB_HOST", "my-app-db.cliaouaicgro.eu-north-1.rds.amazonaws.com"),  
-    "user": os.getenv("DB_USER", "admin"),  
-    "password": os.getenv("DB_PASSWORD", "204863Wante#"),  
+    "host": os.getenv("DB_HOST", ""),  
+    "user": os.getenv("DB_USER", ""),  
+    "password": os.getenv("DB_PASSWORD", ""),  
     "database": os.getenv("OPT_DB_NAME", "OptimizationProblemDatabase"), 
     "cursorclass": pymysql.cursors.DictCursor,
 }
@@ -156,7 +157,7 @@ def process_job(job):
             result = optimizer.optimize(data)  # EVERY RESEARCHER SHOULD HAVE A FUNCTION CALLED OPTIMIZE INSIDE THE CLASS TO OPTIMIZE PASSED DATA
 
             # print('result looks like: ',type(result))
-            if isinstance(result, tuple):
+            if isinstance(result[0], gurobipy.Model): #special for gurobi objects only!!
                 model, r, d = result
                 # solution and visualization
                 solution = optimizer.extract_solution_row(model, r, d, input_data=data)

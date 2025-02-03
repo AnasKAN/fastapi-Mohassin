@@ -21,9 +21,9 @@ async def log_exceptions(request, call_next):
 #db connection configuration
 def get_db_connection():
     return pymysql.connect(
-        host="my-app-db.cliaouaicgro.eu-north-1.rds.amazonaws.com",
-        user="admin",
-        password="204863Wante#",
+        host="",
+        user="",
+        password="",
         database="OptimizationProblemDatabase",
         cursorclass=pymysql.cursors.DictCursor
     )
