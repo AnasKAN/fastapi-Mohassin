@@ -200,17 +200,17 @@ def get_job_result(job_id: str, api_key: str = Depends(validate_api_key)):
 
 
 
-@app.get("/optimizers")
+@app.get("/optimizers", response_model=list[dict])
 def list_optimizers(api_key: str = Depends(validate_api_key)):
     """List available optimizers."""
     connection = get_db_connection()
     try:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT * FROM Solvers")
+            cursor.execute("SELECT solver_id, solver_name FROM Solvers")  # Select only relevant fields
             optimizers = cursor.fetchall()
             if not optimizers:
                 raise HTTPException(status_code=404, detail="No optimizers found")
-            return optimizers
+            return optimizers  # Returns a list of dictionaries with solver_id and solver_name
     finally:
         connection.close()
 
